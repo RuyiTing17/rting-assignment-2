@@ -82,25 +82,37 @@ function getColor(label) {
     ];
     return colors[label % colors.length];
 }
-function runKMeansStep() {
-    if (!data) {
-        console.log('No data available for KMeans step');
-        return;
-    }
-    
-    if (hasConverged) {
-        updateStatus('KMeans has already converged. Generate new data or reset to continue.');
-        return;
-    }
-    
-    console.log(`Running KMeans step ${step}`);
+
+function updateButtonStates() {
     const initMethod = document.getElementById('initMethod').value;
     const k = parseInt(document.getElementById('kClusters').value);
+    const stepButton = document.getElementById('step');
+    const convergeButton = document.getElementById('converge');
+
+    if (initMethod === 'manual') {
+        const isReady = centroids.length === k;
+        stepButton.disabled = !isReady;
+        convergeButton.disabled = !isReady;
+        updateStatus(isReady ? 'Ready to start clustering' : `Place ${k - centroids.length} more centroid(s)`);
+    } else {
+        stepButton.disabled = false;
+        convergeButton.disabled = false;
+    }
+}
+function runKMeansStep() {
+    if (!data || hasConverged) return;
+    
+    const initMethod = document.getElementById('initMethod').value;
+    const k = parseInt(document.getElementById('kClusters').value);
+
+    if (initMethod === 'manual' && centroids.length !== k) {
+        updateStatus(`Place ${k - centroids.length} more centroid(s) before starting`);
+        return;
+    }
+
     fetch('/run_kmeans_step', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             data: data,
             k: k,
@@ -111,40 +123,30 @@ function runKMeansStep() {
     })
     .then(response => response.json())
     .then(result => {
-        console.log('KMeans step result:', result);
         centroids = result.centroids;
         labels = result.labels;
         step = result.step;
         hasConverged = result.converged;
         updateChart();
-        if (hasConverged) {
-            updateStatus('KMeans has converged!');
-        } else {
-            updateStatus(`Step ${step} completed. Click Step again to continue.`);
-        }
+        updateStatus(hasConverged ? 'KMeans has converged!' : `Step ${step} completed`);
     })
     .catch(error => console.error('Error in KMeans step:', error));
 }
+
 function runKMeansConverge() {
-    if (!data) {
-        console.log('No data available for KMeans converge');
-        return;
-    }
+    if (!data || hasConverged) return;
     
-    if (hasConverged) {
-        console.log('KMeans has already converged');
-        updateStatus('KMeans has already converged. Generate new data or reset to start over.');
-        return;
-    }
-    
-    console.log('Running KMeans converge');
     const initMethod = document.getElementById('initMethod').value;
     const k = parseInt(document.getElementById('kClusters').value);
+
+    if (initMethod === 'manual' && centroids.length !== k) {
+        updateStatus(`Place ${k - centroids.length} more centroid(s) before starting`);
+        return;
+    }
+
     fetch('/run_kmeans_converge', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             data: data,
             k: k,
@@ -154,7 +156,6 @@ function runKMeansConverge() {
     })
     .then(response => response.json())
     .then(result => {
-        console.log('KMeans converge result:', result);
         centroids = result.centroids;
         labels = result.labels;
         step = result.step;
@@ -166,13 +167,13 @@ function runKMeansConverge() {
 }
 
 function reset() {
-    console.log('Resetting KMeans');
-    centroids = null;
+    centroids = [];
     labels = null;
     step = 0;
     hasConverged = false;
     updateChart();
     updateStatus('Reset complete. Generate new data or start clustering.');
+    updateButtonStates();
 }
 
 function updateStatus(message) {
@@ -180,25 +181,32 @@ function updateStatus(message) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM content loaded');
     document.getElementById('generateData').addEventListener('click', generateData);
     document.getElementById('step').addEventListener('click', runKMeansStep);
     document.getElementById('converge').addEventListener('click', runKMeansConverge);
     document.getElementById('reset').addEventListener('click', reset);
+    document.getElementById('initMethod').addEventListener('change', updateButtonStates);
+    document.getElementById('kClusters').addEventListener('change', updateButtonStates);
 
     document.getElementById('chart').addEventListener('click', (event) => {
         if (document.getElementById('initMethod').value === 'manual') {
             const rect = chart.canvas.getBoundingClientRect();
             const x = chart.scales.x.getValueForPixel(event.clientX - rect.left);
             const y = chart.scales.y.getValueForPixel(event.clientY - rect.top);
-            if (!centroids) centroids = [];
-            centroids.push([x, y]);
-            console.log(`Manual centroid added: (${x}, ${y})`);
-            updateChart();
-            updateStatus(`Manual centroid added: (${x.toFixed(2)}, ${y.toFixed(2)})`);
+            const k = parseInt(document.getElementById('kClusters').value);
+            
+            if (centroids.length < k) {
+                centroids.push([x, y]);
+                updateChart();
+                updateStatus(`Centroid ${centroids.length} of ${k} placed`);
+                updateButtonStates();
+            } else {
+                updateStatus(`All ${k} centroids have been placed`);
+            }
         }
     });
 
     initChart();
     generateData();
+    updateButtonStates();
 });

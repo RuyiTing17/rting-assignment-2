@@ -4,4 +4,5 @@ install:
 	python3 -m pip install -r requirements.txt
 
 run:
-	python3 -m flask --app app.main run --port=3000
+	FLASK_APP=app.main python3 -m flask run --port=3000
+	
